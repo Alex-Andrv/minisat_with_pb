@@ -20,6 +20,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 #include "minisat/utils/System.h"
 
+#include <stdexcept>
+
 #if defined(__linux__)
 
 #include <stdio.h>
@@ -94,3 +96,11 @@ double Minisat::memUsedPeak(void) { return memUsed(); }
 double Minisat::memUsed() { return 0; }
 double Minisat::memUsedPeak() { return 0; }
 #endif
+
+void Minisat::uassert_failed(const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+    exit(200);
+}

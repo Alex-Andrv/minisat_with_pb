@@ -18,9 +18,7 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 **************************************************************************************************/
 
-#include <errno.h>
-
-#include <signal.h>
+#include <csignal>
 
 #include "minisat/utils/System.h"
 #include "minisat/utils/ParseUtils.h"
@@ -28,6 +26,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "minisat/core/Dimacs.h"
 #include "minisat/core/OutOfMemoryException.h"
 #include "minisat/core/Solver.h"
+#include <stdio.h>
 
 using namespace Minisat;
 
@@ -83,8 +82,18 @@ static void SIGINT_exit(int) {
 // Main:
 
 
+bool endsWith(const char* str, const char* suffix) {
+    size_t str_len = strlen(str);
+    size_t suffix_len = strlen(suffix);
+    if (str_len < suffix_len) {
+        return false;
+    }
+    return (strcmp(str + str_len - suffix_len, suffix) == 0);
+}
+
 int main(int argc, char** argv)
 {
+//    freopen("out.txt","w", stdout);
     try {
         setUsageHelp("USAGE: %s [options] <input-file> <result-output-file>\n\n  where input may be either in plain or gzipped DIMACS.\n");
         // fprintf(stderr, "This is MiniSat 2.0 beta\n");
@@ -136,18 +145,30 @@ int main(int argc, char** argv)
             } }
 #endif
         
-        if (argc == 1)
-            fprintf(stderr, "Reading from standard input... Use '--help' for help.\n");
+//        if (argc == 1) {
+////            fprintf(stderr, "Reading from standard input... Use '--help' for help.\n");
+//            fprintf(stderr, "ERROR! Wrong number of arguments. You should specify input file: *.cnf | *.opb");
+//            return 0;
+//        }
         
         FILE* in = (argc == 1) ? fdopen(0, "rb") : fopen(argv[1], "rb");
+//
+//        FILE* in = fopen(argv[1], "rb");
+
         if (in == NULL)
             fprintf(stderr, "ERROR! Could not open file: %s\n", argc == 1 ? "<stdin>" : argv[1]), exit(1);
         
         if (S.verbosity > 0){
             fprintf(stderr, "============================[ Problem Statistics ]=============================\n");
             fprintf(stderr, "|                                                                             |\n"); }
-        
-        parse_DIMACS(in, S);
+
+
+        if (S.is_opb) {
+            parse_OPB(in, S);
+        } else {
+            parse_DIMACS(in, S);
+        }
+
         fclose(in);
         FILE* res = argc >= 3 ? fopen(argv[2], "wb") : stdout;
         
@@ -179,19 +200,19 @@ int main(int argc, char** argv)
         }
         
         vec<Lit> dummy;
-        lbool ret = S.solveLimited(dummy);
+        lbool ret = !S.only_propagate ? S.solveLimited(dummy) : (S.get_trail().size() == S.nVars() ? l_True : l_Undef);
         if (S.verbosity > 0){
             printStats(S);
             fprintf(stderr, "\n"); }
         fprintf(stderr, ret == l_True ? "SATISFIABLE\n" : ret == l_False ? "UNSATISFIABLE\n" : "INDETERMINATE\n");
         if (res != NULL){
-            if (ret == l_True){
+            if (ret == l_True) {
                 fprintf(res, "SAT\n");
                 for (int i = 0; i < S.nVars(); i++)
                     if (S.model[i] != l_Undef)
                         fprintf(res, "%s%s%d", (i==0)?"":" ", (S.model[i]==l_True)?"":"-", i+1);
                 fprintf(res, " 0\n");
-            }else if (ret == l_False)
+            } else if (ret == l_False)
                 fprintf(res, "UNSAT\n");
             else
                 fprintf(res, "INDET\n");

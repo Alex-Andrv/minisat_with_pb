@@ -24,6 +24,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include <stdlib.h>
 #include <stdio.h>
 #include <memory>
+#include "minisat/utils/System.h"
 
 namespace Minisat {
 
@@ -89,10 +90,13 @@ static int parseInt(B& in) {
     skipWhitespace(in);
     if      (*in == '-') neg = true, ++in;
     else if (*in == '+') ++in;
-    if (*in < '0' || *in > '9') fprintf(stderr, "PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
-    while (*in >= '0' && *in <= '9')
-        val = val*10 + (*in - '0'),
+    if (*in < '0' || *in > '9')
+        fprintf(stderr, "PARSE ERROR! Unexpected char: %c\n", *in), exit(3);
+    while (*in >= '0' && *in <= '9') {
+        val = val * 10 + (*in - '0');
+        minisat_uassert(val < (1 << 22), "coefficients should be less than 2^22");
         ++in;
+    }
     return neg ? -val : val; }
 
 

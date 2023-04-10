@@ -43,7 +43,6 @@ namespace Minisat {
 typedef int Var;
 #define var_Undef (-1)
 
-
 struct Lit {
     int     x;
 
@@ -55,8 +54,15 @@ struct Lit {
     bool operator <  (Lit p) const { return x < p.x;  } // '<' makes p, ~p adjacent in the ordering.
 };
 
+struct Term {
+    int coeff;
+    Lit lit;
+};
 
-inline  Lit  mkLit     (Var var, bool sign = false) { Lit p; p.x = var + var + (int)sign; return p; }
+
+inline  Lit  mkLit     (Var var, bool sign = false) {
+    Lit p; p.x = var + var + (int)sign; return p;
+}
 inline  Lit  operator ~(Lit p)              { Lit q; q.x = p.x ^ 1; return q; }
 inline  Lit  operator ^(Lit p, bool b)      { Lit q; q.x = p.x ^ (unsigned int)b; return q; }
 inline  bool sign      (Lit p)              { return p.x & 1; }
@@ -128,18 +134,22 @@ class Clause {
     struct {
         unsigned mark      : 2;
         unsigned learnt    : 1;
+        unsigned is_pb     : 1;
         unsigned has_extra : 1;
         unsigned reloced   : 1;
-        unsigned size      : 27; }                            header;
-#ifdef __GNUC__
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wpedantic"
-    // ISO C++ forbids flexible array member 'data'
-#endif
-    union data_union { Lit lit; float act; uint32_t abs; CRef rel; } data[0];
-#ifdef __GNUC__
-#  pragma GCC diagnostic pop
-#endif
+        unsigned size      : 26;
+    } header;
+
+    union Data {
+        Lit lit;
+        int32_t coeff;
+        float act;
+        uint32_t abs;
+        int32_t bound;
+        int32_t sum;
+        int32_t del;
+        CRef rel;
+    } data[0];
 
     friend class ClauseAllocator;
 
@@ -148,6 +158,7 @@ class Clause {
     Clause(const V& ps, bool use_extra, bool learnt) {
         header.mark      = 0;
         header.learnt    = learnt;
+        header.is_pb     = false;
         header.has_extra = use_extra;
         header.reloced   = 0;
         header.size      = ps.size();
@@ -155,11 +166,76 @@ class Clause {
         for (int i = 0; i < ps.size(); i++)
             data[i].lit = ps[i];
 
-        if (header.has_extra){
+        if (header.has_extra) {
             if (header.learnt)
                 data[header.size].act = 0;
             else
-                calcAbstraction(); }
+                calcAbstraction();
+        }
+    }
+
+    // NOTE: This constructor cannot be used directly (doesn't allocate enough memory).
+    Clause(const vec<Term>& ps, bool use_extra, int bound, int sum, int del) {
+        assert(ps.size() < (1 << 26));
+
+        header.mark      = 0;
+        header.learnt    = false;
+        header.is_pb     = true;
+        header.has_extra = use_extra;
+        header.reloced   = 0;
+        header.size      = 2 * ps.size();
+
+
+        for (int i = 0; i < ps.size(); i++) {
+            data[2 * i].coeff = ps[i].coeff;
+            data[2 * i + 1].lit = ps[i].lit;
+        }
+        // могут пересечься адреса
+
+
+        data[header.size + 1].bound = bound;
+        data[header.size + 2].sum = sum;
+        data[header.size + 3].del = del;
+
+
+        if (header.has_extra) {
+            if (header.learnt)
+                data[header.size].act = 0; // TODO Зачем
+            else
+                calcAbstraction(); // TODO Зачем
+        }
+    }
+
+    // NOTE: This constructor cannot be used directly (doesn't allocate enough memory).
+    Clause(const Clause& c, bool use_extra, int bound, int sum, int del) {
+        assert(c.size() < (1 << 26));
+
+        header.mark      = 0;
+        header.learnt    = false;
+        header.is_pb     = true;
+        header.has_extra = use_extra;
+        header.reloced   = 0;
+        header.size      = 2 * c.size();
+
+
+        for (int i = 0; i < c.size(); i++) {
+            data[2 * i].coeff = c.get_coeff(i);
+            data[2 * i + 1].lit = c[i];
+        }
+        // могут пересечься адреса
+
+
+        data[header.size + 1].bound = bound;
+        data[header.size + 2].sum = sum;
+        data[header.size + 3].del = del;
+
+
+        if (header.has_extra) {
+            if (header.learnt)
+                data[header.size].act = 0; // TODO Зачем
+            else
+                calcAbstraction(); // TODO Зачем
+        }
     }
 
 public:
@@ -171,10 +247,11 @@ public:
         data[header.size].abs = abstraction;  }
 
 
-    int          size        ()      const   { return header.size; }
+    int          size        ()      const   { return is_pb() ? header.size / 2 : header.size; }
     void         shrink      (int i)         { assert(i <= size()); if (header.has_extra) data[header.size-i] = data[header.size]; header.size -= i; }
     void         pop         ()              { shrink(1); }
     bool         learnt      ()      const   { return header.learnt; }
+    bool         is_pb       ()      const   { return header.is_pb; }
     bool         has_extra   ()      const   { return header.has_extra; }
     uint32_t     mark        ()      const   { return header.mark; }
     void         mark        (uint32_t m)    { header.mark = m; }
@@ -186,8 +263,15 @@ public:
 
     // NOTE: somewhat unsafe to change the clause in-place! Must manually call 'calcAbstraction' afterwards for
     //       subsumption operations to behave correctly.
-    Lit&         operator [] (int i)         { return data[i].lit; }
-    Lit          operator [] (int i) const   { return data[i].lit; }
+    Lit&         operator [] (int i)         { return is_pb() ? data[2 * i + 1].lit : data[i].lit; }
+    Lit          operator [] (int i) const   { return is_pb() ? data[2 * i + 1].lit : data[i].lit; }
+    int32_t      get_coeff(int i) const      { assert(is_pb()); return data[2 * i].coeff; }
+    int32_t      bound() const               { assert(is_pb()); return data[header.size + 1].bound; }
+    int32_t&     bound()                     { assert(is_pb()); return data[header.size + 1].bound; }
+    int32_t      sum() const                 { assert(is_pb()); return data[header.size + 2].sum; }
+    int32_t&     sum()                       { assert(is_pb()); return data[header.size + 2].sum; }
+    int32_t      del() const                 { assert(is_pb()); return data[header.size + 3].del; }
+    int32_t&     del()                       { assert(is_pb()); return data[header.size + 3].del; }
     operator const Lit* (void) const         { return (Lit*)data; }
 
     float&       activity    ()              { assert(header.has_extra); return data[header.size].act; }
@@ -205,8 +289,11 @@ public:
 const CRef CRef_Undef = RegionAllocator<uint32_t>::Ref_Undef;
 class ClauseAllocator : public RegionAllocator<uint32_t>
 {
-    static int clauseWord32Size(int size, bool has_extra){
-        return (sizeof(Clause) + (sizeof(Lit) * (size + (int)has_extra))) / sizeof(uint32_t); }
+    static int clauseWord32Size(int size, bool has_extra, bool is_pseudo_boolean) {
+        assert(!has_extra || !is_pseudo_boolean);
+        size += static_cast<int>(has_extra) + static_cast<int>(is_pseudo_boolean) * (4 + size);
+        return (sizeof(Clause) + (sizeof(Lit) * size)) / sizeof(uint32_t);
+    }
  public:
     bool extra_clause_field;
 
@@ -224,8 +311,32 @@ class ClauseAllocator : public RegionAllocator<uint32_t>
         assert(sizeof(float)    == sizeof(uint32_t));
         bool use_extra = learnt | extra_clause_field;
 
-        CRef cid = RegionAllocator<uint32_t>::alloc(clauseWord32Size(ps.size(), use_extra));
+        CRef cid = RegionAllocator<uint32_t>::alloc(clauseWord32Size(ps.size(), use_extra, false));
         new (lea(cid)) Clause(ps, use_extra, learnt);
+
+        return cid;
+    }
+
+    CRef alloc(const Clause& c, int bound, int sum, int del)
+    {
+        assert(sizeof(Lit)      == sizeof(uint32_t));
+        assert(sizeof(float)    == sizeof(uint32_t));
+        bool use_extra = false | extra_clause_field;
+
+        CRef cid = RegionAllocator<uint32_t>::alloc(clauseWord32Size(c.size(), use_extra, true));
+        new (lea(cid)) Clause(c, use_extra, bound, sum, del);
+
+        return cid;
+    }
+
+    CRef alloc(const vec<Term>& ps, int bound, int sum)
+    {
+        assert(sizeof(Lit)      == sizeof(uint32_t));
+        assert(sizeof(float)    == sizeof(uint32_t));
+        bool use_extra = false | extra_clause_field;
+
+        CRef cid = RegionAllocator<uint32_t>::alloc(clauseWord32Size(ps.size(), use_extra, true));
+        new (lea(cid)) Clause(ps, use_extra, bound, sum, 0);
 
         return cid;
     }
@@ -240,7 +351,7 @@ class ClauseAllocator : public RegionAllocator<uint32_t>
     void free(CRef cid)
     {
         Clause& c = operator[](cid);
-        RegionAllocator<uint32_t>::free(clauseWord32Size(c.size(), c.has_extra()));
+        RegionAllocator<uint32_t>::free(clauseWord32Size(c.size(), c.has_extra(), c.is_pb()));
     }
 
     void reloc(CRef& cr, ClauseAllocator& to)
@@ -249,7 +360,11 @@ class ClauseAllocator : public RegionAllocator<uint32_t>
 
         if (c.reloced()) { cr = c.relocation(); return; }
 
-        cr = to.alloc(c, c.learnt());
+        if (c.is_pb()) {
+            cr = to.alloc(c, c.bound(), c.sum(), c.del());
+        } else {
+            cr = to.alloc(c, c.learnt());
+        }
         c.relocate(cr);
 
         // Copy extra data-fields:
@@ -313,11 +428,13 @@ template<class Idx, class Vec, class Deleted>
 void OccLists<Idx,Vec,Deleted>::clean(const Idx& idx)
 {
     Vec& vec = occs[toInt(idx)];
-    auto j = std::remove_if(vec.begin(), vec.end(), [&] (typename Vec::value_type const& elem) {
-            return deleted(elem);
+    int i, j;
+    for (i = j = 0; i < vec.size(); i++) {
+        if (!deleted(vec[i])) {
+            vec[j++] = vec[i];
         }
-    );
-    vec.truncate(j);
+    }
+    vec.shrink(i - j);
     dirty[toInt(idx)] = 0;
 }
 
@@ -409,7 +526,7 @@ inline Lit Clause::subsumes(const Clause& other) const
 }
 
 inline void Clause::strengthen(Lit p) {
-    auto ptr = std::remove_if(data, data + header.size, [p] (data_union elem) {return elem.lit == p; });
+    auto ptr = std::remove_if(data, data + header.size, [p] (Data elem) {return elem.lit == p; });
     assert(ptr != data + header.size);
     assert(ptr == data + header.size - 1);
     (void)ptr;

@@ -52,7 +52,9 @@ add_library(libminisat STATIC
     minisat/utils/ParseUtils.h
     minisat/utils/System.h
     minisat/simp/SimpSolver.h
-)
+        minisat/mtl/Option.h)
+
+add_subdirectory(tests/GTest)
 
 # Keep the library named as either libminisat.a or minisat.lib
 # While having the target's logical name be distinct from minisat (the binary)
