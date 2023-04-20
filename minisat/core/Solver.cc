@@ -262,9 +262,6 @@ bool Solver::addLeqAssign_(vec<Term> &terms, int& bound) {
 
 bool Solver::addGeqAssign_(vec<Term> &terms, int& bound) {
     // We don't support adding learned pseudo boolean constraints
-    if (terms.size() == 1) {
-        printf("ddd");
-    }
     assert(decisionLevel() == 0);
     if (!ok)
         return false;
