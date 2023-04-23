@@ -4,12 +4,12 @@
 namespace Minisat {
     class WrappedMinisatSolver : public Minisat::Solver {
     public:
-        void addClause(std::vector<int> lits) {
+        bool addClause(std::vector<int> lits) {
             Minisat::vec<Minisat::Lit> ps;
             for (int lit: lits) {
                 ps.push(get_lit(lit));
             }
-            addClause_(ps);
+            return addClause_(ps);
         }
 
         bool addLeqAssign(std::vector<int> lits, std::vector<int> coeff, int bound) {
