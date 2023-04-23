@@ -1,14 +1,4 @@
-#include "minisat/core/Recorder.h"
 #include "minisat/core/Solver.h"
-#include "minisat/utils/System.h"
-
-#include <signal.h>
-
-#include <algorithm>
-#include <condition_variable>
-#include <cstring>
-#include <functional>
-#include <thread>
 #include <vector>
 
 namespace Minisat {
