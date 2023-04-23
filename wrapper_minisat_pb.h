@@ -30,6 +30,14 @@ namespace Minisat {
             return addGeqAssign_(ps, bound);
         }
 
+        int prop(std::vector<int> assumps, int psaving) {
+            Minisat::vec<Minisat::Lit> ps;
+            for (int lit: assumps) {
+                ps.push(get_lit(lit));
+            }
+            return prop_check(ps, psaving);
+        }
+
     private:
         Minisat::Lit get_lit(int lit) {
             int var = abs(lit) - 1;
