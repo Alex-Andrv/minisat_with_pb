@@ -120,7 +120,6 @@ namespace Minisat {
                     S.addClause_(lits);
                 }
             }
-
         }
         if (vars != S.nVars())
             fprintf(stderr, "WARNING! DIMACS header mismatch: wrong number of variables.\n");

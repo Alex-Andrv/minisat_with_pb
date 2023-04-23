@@ -89,6 +89,7 @@ namespace Minisat {
         bool solve(Lit p, Lit q);            // Search for a model that respects two assumptions.
         bool solve(Lit p, Lit q, Lit r);     // Search for a model that respects three assumptions.
         bool okay() const;                  // FALSE means solver is in a conflicting state
+        bool prop_check (const vec<Lit>& assumps, vec<Lit>& prop, int psaving = 0); // compute a list of propagated literals given a set of assumptions
 
         void toDimacs(FILE *f, const vec<Lit> &assumps);            // Write CNF to file in DIMACS-format.
         void toDimacs(const char *file, const vec<Lit> &assumps);

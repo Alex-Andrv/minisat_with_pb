@@ -208,6 +208,56 @@ Var Solver::newVar(bool sign, bool dvar) {
 }
 
 
+//=================================================================================================
+// Propagate and check:
+bool Solver::prop_check(const vec<Lit>& assumps, vec<Lit>& prop, int psaving)
+{
+    prop.clear();
+    if (!ok)
+        return false;
+
+    bool    st = true;
+    int  level = decisionLevel();
+    CRef confl = CRef_Undef;
+
+    // dealing with phase saving
+    int psaving_copy = phase_saving;
+    phase_saving = psaving;
+
+    // propagate each assumption at a new decision level
+    for (int i = 0; st && confl == CRef_Undef && i < assumps.size(); ++i) {
+        Lit p = assumps[i];
+
+        if (value(p) == l_False)
+            st = false;
+        else if (value(p) != l_True) {
+            newDecisionLevel ();
+            uncheckedEnqueue(p);
+            confl = propagate();
+        }
+    }
+
+    // copying the result
+    if (decisionLevel() > level) {
+        for (int c = trail_lim[level]; c < trail.size(); ++c)
+            prop.push(trail[c]);
+
+        // if there is a conflict, pushing
+        // the conflicting literal as well
+        if (confl != CRef_Undef)
+            prop.push(ca[confl][0]);
+
+        // backtracking
+        cancelUntil(level);
+    }
+
+    // restoring phase saving
+    phase_saving = psaving_copy;
+
+    return st && confl == CRef_Undef;
+}
+
+
 bool Solver::addClause_(vec<Lit> &ps) {
     assert(decisionLevel() == 0);
     if (!ok) return false;
