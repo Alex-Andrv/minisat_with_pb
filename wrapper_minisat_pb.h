@@ -18,7 +18,7 @@ namespace Minisat {
             for (int i = 0; i < static_cast<int>(lits.size()); i++) {
                 ps.push(Minisat::Term{coeff[i], get_lit(lits[i])});
             }
-            addLeqAssign_(ps, bound);
+            return addLeqAssign_(ps, bound);
         }
 
         bool addGeqAssign(std::vector<int> lits, std::vector<int> coeff, int bound) {
@@ -27,7 +27,7 @@ namespace Minisat {
             for (int i = 0; i < static_cast<int>(lits.size()); i++) {
                 ps.push(Minisat::Term{coeff[i], get_lit(lits[i])});
             }
-            addGeqAssign_(ps, bound);
+            return addGeqAssign_(ps, bound);
         }
 
     private:
