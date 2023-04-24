@@ -1,5 +1,6 @@
 #include "minisat/core/Solver.h"
 #include <vector>
+#include <map>
 
 namespace Minisat {
     class WrappedMinisatSolver : public Minisat::Solver {
@@ -36,6 +37,13 @@ namespace Minisat {
                 ps.push(get_lit(lit));
             }
             return prop_check(ps, psaving);
+        }
+
+        std::map<std::string, int> getStats() {
+            return {{"restarts", starts},
+                    {"conflicts", conflicts},
+                    {"decisions", decisions},
+                    {"propagations", propagations}};
         }
 
     private:
